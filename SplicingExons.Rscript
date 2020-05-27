@@ -1,0 +1,53 @@
+## Rscript: get genome position of splicing exons ---------
+# make TxDb from GTF file 
+library(GenomicFeatures)
+txdbz11 <- makeTxDbFromGFF("Danio_rerio.GRCz11.98.gtf",
+	format="gtf",
+	organism="Danio rerio")
+
+# get exon information
+exonOnly <- exonicParts(txdbz11, linked.to.single.gene.only=TRUE)
+exon <- as(exonOnly,"data.frame")
+exon$order <- rownames(exon)
+
+# get information of splicing exons
+# file 'SE.MATS.JCEC_done.csv' was made manually
+dfse <- read.csv("SE.MATS.JCEC_done.csv",header=T,row.names=1)
+dfse <- dfse[,c("exonStart_0base","exonEnd","GeneID","IncLevelDifference","FDR","chr","strand","geneSymbol")]
+names(dfse)[1:4] <- c("start","end","gene_id","deltaPSI")
+dfse$start <- dfse$start+1
+
+# some events with more than one splicing exons were deleted by merge processing
+dfre<- merge(exon,dfse,by=c("start","end"))  
+dfsig <- dfre[dfre$FDR<0.05,]
+dfnon <- dfre[dfre$FDR>=0.05,]
+
+exonsig <- exon[dfsig$order,]
+exonnon <- exon[dfnon$order,]
+exonoth <- exon[!(rownames(exon) %in% dfre$order),]
+
+exonsig$type <- "Changed"
+exonnon$type <- "Unchange"
+exonoth$type <- "Ctrl"
+exon_re <- rbind(exonsig,exonnon,exonoth)
+
+exon_re <- exon_re[,c("seqnames","start","end","type","width","strand")]
+exon_re$start <- exon_re$start-1
+write.table(exon_re,file="exon_in_different_type.bed",sep="\t",row.names = FALSE,col.names=FALSE,quote = FALSE)
+
+
+## Get exon sequence length and calculate GC content ---------
+nohup bedtools nuc -fi Danio_rerio.GRCz11.dna.primary_assembly.fa -bed exon_in_different_type.bed -s > exon_total_gc_content_s.txt &
+
+
+## Get sequence for MaxEnt score ---------
+# define genome position of sequence (.bed) for MaxEnt score
+# files 'SE.MATS.JCEC_total_5ss.bed' and 'SE.MATS.JCEC_total_3ss.bed' were made manually
+
+# get sequence
+nohup bedtools getfasta -fi ../Danio_rerio.GRCz11.dna.primary_assembly.fa -bed SE.MATS.JCEC_total_5ss.bed -name -tab -s >se_total_5ss_s.fasta & 
+nohup bedtools getfasta -fi ../Danio_rerio.GRCz11.dna.primary_assembly.fa -bed SE.MATS.JCEC_total_3ss.bed -name -tab -s >se_total_3ss_s.fasta &
+
+#  calculate MaxEnt score by the website tool
+
+## End
